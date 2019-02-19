@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+	<meta charset="utf-8"/>
+	<title>港交所股票買賣結算表</title>
+	<style>
+		body {
+			font-size: x-large;
+		}
+		input {
+			margin: 10px;
+			font-size: x-large;
+		}		
+		header {
+			margin: 0px;
+			font-size: xx-large;
+			font-weight: bold;
+		}
+		footer {
+			position:fixed;
+			bottom:0;
+			left:50%;
+		}
+	</style>
+</head>
+<body>
+	<header>輸入交易明細:</header>
+	<form name="transaction" action="javascript:void(0);" onsubmit="calculate();">
+		<label for="code">香港交易所股票號</label>
+		<input type="text" name="code" id="code" value="--">（僅作參考）<br>
+		
+		<label for="buy">每股買入價</label>
+		<input type="text" name="buy_price" id="buy" value="0">港元<br>
+		
+		<label for="sell">每股賣出價</label>
+		<input type="text" name="sell_price" id="sell" value="0">港元<br>
+		
+		<label for="per_lot">每首股數</label>
+		<input type="text" name="per_lot" id="per_lot" value="0"><br>
+		
+		<label for="lot">總數</label>
+		<input type="text" name="lot" id="lot" value="0">首<br>
+		
+		<input type="submit" value="提交">
+		<input type="button" value="重置" onClick="location.reload(true);">
+	</form> 
+	
+	<p id="message">** 按照香港匯豐銀行網上交易平台收費結算 **</p>
+	
+	<footer>&#9400;2019 你老头制作</footer>
+	
+	<script>
+	// define constants
+	const HKFX_TRADING_FEE = 0.005;   // percentage
+	const PER_LOT_CHARGE = 5.0 ;      // HKD
+	const BROKEAGE_FEE = 0.25;        // percentage
+	const STAMP_DUTY = 0.1;           // percentage
+	const TRANSACTION_LEVY = 0.003;   // percentage
+	//
+	var buy_price;
+	var sell_price;
+	var per_lot;
+	var lot;
+	//
+	function calculate() {
+		var message = "";
+		var isSell = false;
+		var theForm = document.forms["transaction"];		
+		var code = theForm.elements["code"].value;
+		var result;
+		
+		message += "股票號：" + code + "<br>";
+		// verify all input data
+		buy_price = parseFloat(theForm.elements["buy_price"].value);
+		if (isNaN(buy_price) || buy_price <= 0.0) {
+			error("‘買入價’ 必須大於零！");
+			return;
+		}
+		message += "買入價：$ " + buy_price.toFixed(2) + " 港元<br>";
+		
+		sell_price = parseFloat(theForm.elements["sell_price"].value);
+		if (sell_price < 0.0) {
+			error("‘賣出價’ 必須大於零！");
+			return;
+		}
+		
+		if (sell_price>0.0) {
+			isSell = true;
+			message += "賣出價：$ " + sell_price.toFixed(2) + " 港元<br>";
+		}
+		
+		per_lot = parseFloat(theForm.elements["per_lot"].value);
+		if (isNaN(per_lot) || per_lot <= 0.0) {
+			error("‘每首股數’ 必須大於零！");
+			return;
+		}
+		
+		lot = parseFloat(theForm.elements["lot"].value);
+		if (isNaN(lot) || lot <= 0.0) {
+			error("‘總數’ 必須大於零！");
+			return;
+		}
+				
+		message += "股票總數：" + per_lot*lot + " 股<br>";
+		
+		if (!isSell) {            // buy in new stocks only
+			// {invest amount, transaction cost}
+			result = buy();
+			message += "交易成本: $ " + result["cost"].toFixed(2);
+			message += "&nbsp;&nbsp;&nbsp;&nbsp;(" + (result["cost"]/result["invest_amt"]*100.0).toFixed(2) + "%)" + "<br>";
+			message += "銀行（提取）：$ " + result["invest_amt"].toFixed(2) + "<br>";
+		} else {                  // complete full transaction with buy & sell
+			// {invest amount, net gain, total cost, take back amount}
+			result  = sell();
+			message += "總交易成本：$ " + result["total_cost"].toFixed(2);
+			message += "&nbsp;&nbsp;&nbsp;&nbsp;(" + (result["total_cost"]/result["invest_amt"]*100.0).toFixed(2) + "%)" + "<br>";
+			message += "銀行（提取）：$ " + result["invest_amt"].toFixed(2) + "<br>";
+			message += "銀行（存入）：$ " + result["take_back"].toFixed(2) + "<br>";
+			message += "盈/虧結算：$ " + result["net_gain"].toFixed(2);
+			message += "&nbsp;&nbsp;&nbsp;&nbsp;(" + (result["net_gain"]/result["invest_amt"]*100.0).toFixed(2) + "%)" + "<br>";
+		}
+				
+		document.getElementById("message").innerHTML = message;
+	}
+	
+	function buy() {
+		var basic_principle = buy_price*per_lot*lot;
+		var cost = 
+			trading_fee(basic_principle) +		
+			deposit_transction_charge() +
+			brokeage_fee(basic_principle) +
+			stamp_duty(basic_principle) +
+			transaction_levy(basic_principle);
+			
+		return {"invest_amt": basic_principle + cost, "cost": cost};
+	}
+	
+	function sell() {
+		var buy_transact = buy();
+		var gross_gain = sell_price*per_lot*lot;
+		var cost = 
+			trading_fee(gross_gain) +
+			brokeage_fee(gross_gain) +
+			stamp_duty(gross_gain) +
+			transaction_levy(gross_gain);
+		var total_cost = cost + buy_transact["cost"];
+		
+		return {"invest_amt":buy_transact["invest_amt"], "net_gain":gross_gain - cost - buy_transact["invest_amt"] , "total_cost": total_cost, "take_back": gross_gain - cost};
+	}
+	
+	function trading_fee(amt) {
+		return amt*HKFX_TRADING_FEE/100.0;	
+	}
+	
+	function deposit_transction_charge() {
+		var charge = lot*PER_LOT_CHARGE;
+    
+		if (charge >= 30.0 && charge <= 200.0)  return charge;	
+		if (charge > 200.0)  return 200.0;		
+		if (charge < 30.0)  return 30.0;
+	}
+	
+	function brokeage_fee(amt) {
+		var charge = amt*BROKEAGE_FEE/100.0;
+		
+		if (charge > 100.0)  return charge;
+		return 100.0;
+	} 
+	
+	function stamp_duty(amt) {
+		return amt*STAMP_DUTY/100.0;
+	}
+	
+	function transaction_levy(amt) {
+		return amt*TRANSACTION_LEVY/100.0;
+	}
+	
+	function error(txt) {
+		document.getElementById("message").innerHTML = txt;
+	}
+
+	</script>
+</body>
+</html>
