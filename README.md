@@ -8,5 +8,7 @@ Python version is just command terminal version<br>
 <br>
 Transaction fees & charges calculation are designed based on HK HSBC online service<br>
 <br>
-網上測試版:<br>
+Enjoy & have fun :-) <br>
+<br>
+Online test site (網上測試版):<br>
 http://tomytestsite.000webhostapp.com/HKStockCalc.html<br>
